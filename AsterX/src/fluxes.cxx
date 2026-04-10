@@ -113,19 +113,20 @@ void CalcFlux(CCTK_ARGUMENTS, EOSType *eos_3p, const rec_var_t rec_var,
   // Prebind the velocity slice for this direction once
   const auto gf_vel_dir_i = gf_vels(dir_i);
 
-  const auto reconstruct_pt =
-      [=] CCTK_DEVICE(const GF3D2<const CCTK_REAL> &var, const PointDesc &p,
-                      bool gf_is_rho, bool gf_is_press) {
-        return reconstruct<vec<CCTK_REAL, 2>>(var, p, reconstruction, dir_i,
-                                              gf_is_rho, gf_is_press, press,
-                                              gf_vel_dir_i, reconstruct_params);
-      };
+  const auto reconstruct_pt = [=] CCTK_DEVICE(const GF3D2<const CCTK_REAL> &var,
+                                              const PointDesc &p,
+                                              bool gf_is_rho,
+                                              bool gf_is_press) {
+    return reconstruct<vec<CCTK_REAL, 2> >(var, p, reconstruction, dir_i,
+                                           gf_is_rho, gf_is_press, press,
+                                           gf_vel_dir_i, reconstruct_params);
+  };
   const auto reconstruct_loworder =
       [=] CCTK_DEVICE(const GF3D2<const CCTK_REAL> &var, const PointDesc &p,
                       bool gf_is_rho, bool gf_is_press) {
-        return reconstruct<vec<CCTK_REAL, 2>>(var, p, reconstruction_LO, dir_i,
-                                              gf_is_rho, gf_is_press, press,
-                                              gf_vel_dir_i, reconstruct_params);
+        return reconstruct<vec<CCTK_REAL, 2> >(
+            var, p, reconstruction_LO, dir_i, gf_is_rho, gf_is_press, press,
+            gf_vel_dir_i, reconstruct_params);
       };
 
   const auto calcflux =

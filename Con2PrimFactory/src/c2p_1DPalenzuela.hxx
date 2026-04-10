@@ -18,7 +18,8 @@ public:
       CCTK_REAL tol, CCTK_REAL alp_thresh_in, CCTK_REAL vwlim, CCTK_REAL B_lim,
       CCTK_REAL rho_BH_in, CCTK_REAL eps_BH_in, CCTK_REAL vwlim_BH_in,
       CCTK_REAL sigma_max_in, CCTK_REAL inv_beta_max_in, bool ye_len,
-      bool use_z, bool use_temperature, bool use_pressure_atmo);
+      bool use_z, bool use_temperature, bool use_pressure_atmo,
+      bool soft_root_conv, CCTK_REAL soft_root_width_factor_in);
 
   CCTK_HOST CCTK_DEVICE CCTK_ATTRIBUTE_ALWAYS_INLINE inline CCTK_REAL
   get_Ssq_Exact(const vec<CCTK_REAL, 3> &mom,
@@ -68,7 +69,8 @@ CCTK_HOST CCTK_DEVICE
         CCTK_REAL B_lim, CCTK_REAL rho_BH_in, CCTK_REAL eps_BH_in,
         CCTK_REAL vwlim_BH_in, CCTK_REAL sigma_max_in,
         CCTK_REAL inv_beta_max_in, bool ye_len, bool use_z,
-        bool use_temperature, bool use_pressure_atmo) {
+        bool use_temperature, bool use_pressure_atmo, bool soft_root_conv,
+        CCTK_REAL soft_root_width_factor_in) {
 
   // Base
   atmo = atm;
@@ -88,6 +90,8 @@ CCTK_HOST CCTK_DEVICE
   use_zprim = use_z;
   use_temp = use_temperature;
   use_press_atmo = use_pressure_atmo;
+  soft_root_convergence = soft_root_conv;
+  soft_root_width_factor = fmax(CCTK_REAL(1.0), soft_root_width_factor_in);
 
   // Derived
   GammaIdealFluid = eos_3p->gamma;
@@ -311,10 +315,11 @@ c2p_1DPalenzuela::solve(const EOSType *eos_3p, prim_vars &pv, cons_vars &cv,
                         const CCTK_REAL alp, const vec<CCTK_REAL, 3> &beta,
                         const smat<CCTK_REAL, 3> &glo, c2p_report &rep) const {
 
-  // ROOTSTAT status = ROOTSTAT::SUCCESS;
+  ROOTSTAT status = ROOTSTAT::SUCCESS;
   rep.iters = 0;
   rep.adjust_cons = false;
   rep.set_atmo = false;
+  rep.soft_root_conv = false;
   rep.status = c2p_report::SUCCESS;
 
   /* Check validity of the 3-metric and compute its inverse */
@@ -379,6 +384,13 @@ c2p_1DPalenzuela::solve(const EOSType *eos_3p, prim_vars &pv, cons_vars &cv,
     return;
   }
 
+  // Clamp Ye in the local working conservatives so the root solve and prim
+  // reconstruction both use EOS-valid Ye.
+  CCTK_REAL Ye_raw = cv.DYe / cv.dens;
+  const CCTK_REAL Ye = fmin(fmax(eos_3p->rgye.min, Ye_raw), eos_3p->rgye.max);
+  const bool ye_clipped = (Ye_raw < eos_3p->rgye.min) || (Ye_raw > eos_3p->rgye.max);
+  cv.DYe = cv.dens * Ye;
+
   // Find x, this is the recovery process
   // const CCTK_INT minbits = std::numeric_limits<CCTK_REAL>::digits - 4;
   // const CCTK_INT maxiters = maxIterations;
@@ -420,34 +432,30 @@ c2p_1DPalenzuela::solve(const EOSType *eos_3p, prim_vars &pv, cons_vars &cv,
     //}
   }
 
-  auto result = Algo::brent(fn, a, b, minbits, maxiters, rep.iters);
-
-  // hybrid: prefer endpoint with smaller |f|, else midpoint
-  CCTK_REAL a_root = result.first;
-  CCTK_REAL b_root = result.second;
-  CCTK_REAL fa = fn(a_root);
-  CCTK_REAL fb = fn(b_root);
-
-  CCTK_REAL xPalenzuela_Sol;
-  if (fb == (CCTK_REAL)0 || std::abs(fb) < std::abs(fa)) {
-    // exact root or smaller residual at b
-    xPalenzuela_Sol = b_root;
-  } else if (std::abs(fa) < std::abs(fb)) {
-    // smaller residual at a
-    xPalenzuela_Sol = a_root;
-  } else {
-    // fall back to midpoint
-    xPalenzuela_Sol = CCTK_REAL(0.5) * (a_root + b_root);
+  const CCTK_REAL f_a0 = fn(a);
+  const CCTK_REAL f_b0 = fn(b);
+  if ((!isfinite(f_a0)) || (!isfinite(f_b0)) || (f_a0 * f_b0 > 0.0)) {
+    status = ROOTSTAT::NOT_BRACKETED;
   }
 
-  // for now, we do not use the above hybrid scheme
-  xPalenzuela_Sol = 0.5 * (result.first + result.second);
+  auto result = Algo::brent(fn, a, b, minbits, maxiters, rep.iters);
 
-  // if (abs(fn(result.first)) < abs(fn(result.second))) {
-  //  xPalenzuela_Sol = result.first;
-  //} else {
-  //  xPalenzuela_Sol = result.second;
-  //}
+  // Legacy endpoint-preference selector kept for reference; below we use the
+  // midpoint rule for xPalenzuela_Sol.
+  // CCTK_REAL a_root = result.first;
+  // CCTK_REAL b_root = result.second;
+  // CCTK_REAL fa = fn(a_root);
+  // CCTK_REAL fb = fn(b_root);
+  // CCTK_REAL xPalenzuela_Sol;
+  // if (fb == (CCTK_REAL)0 || std::abs(fb) < std::abs(fa)) {
+  //   xPalenzuela_Sol = b_root;
+  // } else if (std::abs(fa) < std::abs(fb)) {
+  //   xPalenzuela_Sol = a_root;
+  // } else {
+  //   xPalenzuela_Sol = CCTK_REAL(0.5) * (a_root + b_root);
+  // }
+
+  CCTK_REAL xPalenzuela_Sol = CCTK_REAL(0.5) * (result.first + result.second);
 
   xPalenzuelaToPrim(xPalenzuela_Sol, Ssq, Bsq, BiSi, eos_3p, pv, cv, gup, glo);
 
@@ -467,6 +475,10 @@ c2p_1DPalenzuela::solve(const EOSType *eos_3p, prim_vars &pv, cons_vars &cv,
     return;
   }
 
+  if (ye_clipped) {
+    rep.adjust_cons = true;
+  }
+
   // General comment:
   // One could think of expressing the following condition
   // in a way that is "safe" against NaNs and infs. First, this only makes
@@ -483,14 +495,47 @@ c2p_1DPalenzuela::solve(const EOSType *eos_3p, prim_vars &pv, cons_vars &cv,
 
   // TODO: have an explicit check on max_iters, e.g.:
   // if (rep.iters >= maxiters || abs(fn(xPalenzuela_Sol)) > tolerance) {
-  if (abs(result.first - result.second) >
-      tolerance_0 * min(abs(result.first), abs(result.second))) {
+  const CCTK_REAL root_width = abs(result.first - result.second);
+  const CCTK_REAL strict_width_tol =
+      tolerance_0 * min(abs(result.first), abs(result.second));
+  if (root_width > strict_width_tol) {
+    bool accept_soft = false;
+    if (soft_root_convergence) {
+      const CCTK_REAL scale =
+          fmax(CCTK_REAL(0.0), fmax(abs(result.first), abs(result.second)));
+      const CCTK_REAL soft_width_tol =
+          soft_root_width_factor * tolerance * scale;
+      accept_soft = std::isfinite(root_width) && std::isfinite(soft_width_tol) &&
+                    (root_width <= soft_width_tol);
+    }
+    if (!accept_soft) {
+      // set status to root not converged / not bracketed
+      if (status == ROOTSTAT::NOT_BRACKETED) {
+        rep.set_root_bracket();
+      } else {
+        rep.set_root_conv();
+        status = ROOTSTAT::NOT_CONVERGED;
+      }
+      cv = cv_const;
+      (void)status;
+      return;
+    }
+    rep.set_soft_root_conv();
+  }
 
-    // set status to root not converged
-    rep.set_root_conv();
-    cv = cv_const;
-    // status = ROOTSTAT::NOT_CONVERGED;
-    return;
+  const vec<CCTK_REAL, 3> v_low_pre = calc_contraction(glo, pv.vel);
+  const CCTK_REAL vsq_pre = calc_contraction(v_low_pre, pv.vel);
+  const CCTK_REAL sol_v = std::sqrt(std::max(CCTK_REAL(0), vsq_pre));
+  if (sol_v > v_lim) {
+    pv.rho = cv.dens / w_lim;
+    pv.vel *= v_lim / (sol_v + CCTK_REAL(1e-300));
+    pv.w_lor = w_lim;
+    const auto rgeps_lim = eos_3p->range_eps_from_rho_ye(pv.rho, pv.Ye);
+    pv.eps = fmin(fmax(rgeps_lim.min, pv.eps), rgeps_lim.max);
+    pv.press = eos_3p->press_from_rho_eps_ye(pv.rho, pv.eps, pv.Ye);
+    pv.temperature = eos_3p->temp_from_rho_eps_ye(pv.rho, pv.eps, pv.Ye);
+    pv.entropy = eos_3p->kappa_from_rho_eps_ye(pv.rho, pv.eps, pv.Ye);
+    rep.adjust_cons = true;
   }
 
   // set to atmo if computed rho is below floor density

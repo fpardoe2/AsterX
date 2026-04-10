@@ -65,6 +65,9 @@ public:
   /// Whether the artificial atmosphere was enforced.
   bool set_atmo{false};
 
+  /// Root solve accepted via near-convergence policy (warning-only).
+  bool soft_root_conv{false};
+
   /// Number of calls to the EOS needed for the root finding.
   CCTK_INT iters;
 
@@ -206,6 +209,12 @@ public:
   }
 
   CCTK_DEVICE CCTK_HOST CCTK_ATTRIBUTE_ALWAYS_INLINE inline void
+  set_soft_root_conv() {
+    status = SUCCESS;
+    soft_root_conv = true;
+  }
+
+  CCTK_DEVICE CCTK_HOST CCTK_ATTRIBUTE_ALWAYS_INLINE inline void
   debug_message() const {
     switch (status) {
     case SUCCESS:
@@ -215,6 +224,9 @@ public:
       }
       if (adjust_cons) {
         printf("Conserved variables have been changed. \n");
+      }
+      if (soft_root_conv) {
+        printf("Root solve accepted via near-convergence policy. \n");
       }
       break;
     case INVALID_DETG:
@@ -233,8 +245,7 @@ public:
       printf("Density out of range, dens = %16.8e, rho = %16.8e \n", dens, rho);
       break;
     case RANGE_EPS:
-      printf("Specific energy was out of range! eps = %16.8e \n",
-             eps);
+      printf("Specific energy was out of range! eps = %16.8e \n", eps);
       break;
     case SPEED_LIMIT:
       printf("Speed limit exceeded, vx, vy, vz = %16.8e, %16.8e, %16.8e \n",
@@ -259,7 +270,8 @@ public:
       printf("Preparatory root finding failed (faulty bracketing) \n");
       break;
     case ERR_CODE_NOT_SET:
-      printf("Error code not set! Report was initialized but never changed. \n");
+      printf(
+          "Error code not set! Report was initialized but never changed. \n");
       break;
     default:
       assert(false);

@@ -8,6 +8,7 @@ INCLUDES HEADER: cons.hxx IN cons.hxx
 INCLUDES HEADER: c2p_2DNoble.hxx IN c2p_2DNoble.hxx 
 INCLUDES HEADER: c2p_1DPalenzuela.hxx IN c2p_1DPalenzuela.hxx 
 INCLUDES HEADER: c2p_1DEntropy.hxx IN c2p_1DEntropy.hxx 
+INCLUDES HEADER: c2p_1DRePrimAnd.hxx IN c2p_1DRePrimAnd.hxx
 USES INCLUDE HEADER: setup_eos.hxx 
 USES INCLUDE HEADER: roots.hxx
 USES INCLUDE HEADER: aster_utils.hxx

@@ -8,6 +8,7 @@
 #include "c2p.hxx"
 #include "c2p_1DEntropy.hxx"
 #include "c2p_1DPalenzuela.hxx"
+#include "c2p_1DRePrimAnd.hxx"
 #include "c2p_2DNoble.hxx"
 
 #include "aster_utils.hxx"
@@ -21,8 +22,8 @@ using namespace Con2PrimFactory;
 using namespace AsterUtils;
 
 enum class eos_3param { IdealGas, Hybrid, Tabulated };
-enum class c2p_first_t { None, Noble, Palenzuela, Entropy };
-enum class c2p_second_t { None, Noble, Palenzuela, Entropy };
+enum class c2p_first_t { None, Noble, RePrimAnd, Palenzuela, Entropy };
+enum class c2p_second_t { None, Noble, RePrimAnd, Palenzuela, Entropy };
 
 enum C2PFlag : CCTK_INT {
   C2P_INIT = 0,    // initial value
@@ -45,6 +46,8 @@ void AsterX_Con2Prim_typeEoS(CCTK_ARGUMENTS, EOSIDType *eos_1p,
 
   if (CCTK_EQUALS(c2p_prime, "Noble")) {
     c2p_fir = c2p_first_t::Noble;
+  } else if (CCTK_EQUALS(c2p_prime, "RePrimAnd")) {
+    c2p_fir = c2p_first_t::RePrimAnd;
   } else if (CCTK_EQUALS(c2p_prime, "Palenzuela")) {
     c2p_fir = c2p_first_t::Palenzuela;
   } else if (CCTK_EQUALS(c2p_prime, "Entropy")) {
@@ -57,6 +60,8 @@ void AsterX_Con2Prim_typeEoS(CCTK_ARGUMENTS, EOSIDType *eos_1p,
 
   if (CCTK_EQUALS(c2p_second, "Noble")) {
     c2p_sec = c2p_second_t::Noble;
+  } else if (CCTK_EQUALS(c2p_second, "RePrimAnd")) {
+    c2p_sec = c2p_second_t::RePrimAnd;
   } else if (CCTK_EQUALS(c2p_second, "Palenzuela")) {
     c2p_sec = c2p_second_t::Palenzuela;
   } else if (CCTK_EQUALS(c2p_second, "Entropy")) {
@@ -141,19 +146,29 @@ void AsterX_Con2Prim_typeEoS(CCTK_ARGUMENTS, EOSIDType *eos_1p,
     c2p_2DNoble c2p_Noble(eos_3p, atmo, max_iter, c2p_tol, alp_thresh, vw_lim,
                           B_lim, rho_BH, eps_BH, vwlim_BH, sigma_max,
                           inv_beta_max, Ye_lenient, use_z, use_temperature,
-                          use_press_atmo);
+                          use_press_atmo, soft_root_convergence,
+                          soft_root_width_factor);
+
+    // Construct RePrimAnd c2p object:
+    c2p_1DRePrimAnd c2p_RPA(eos_3p, atmo, max_iter, c2p_tol, alp_thresh, vw_lim,
+                            B_lim, rho_BH, eps_BH, vwlim_BH, sigma_max,
+                            inv_beta_max, Ye_lenient, use_z, use_temperature,
+                            use_press_atmo, soft_root_convergence,
+                            soft_root_width_factor);
 
     // Construct Palenzuela c2p object:
     c2p_1DPalenzuela c2p_Pal(eos_3p, atmo, max_iter, c2p_tol, alp_thresh,
                              vw_lim, B_lim, rho_BH, eps_BH, vwlim_BH, sigma_max,
                              inv_beta_max, Ye_lenient, use_z, use_temperature,
-                             use_press_atmo);
+                             use_press_atmo, soft_root_convergence,
+                             soft_root_width_factor);
 
     // Construct Entropy c2p object:
     c2p_1DEntropy c2p_Ent(eos_3p, atmo, max_iter, c2p_tol, alp_thresh, vw_lim,
                           B_lim, rho_BH, eps_BH, vwlim_BH, sigma_max,
                           inv_beta_max, Ye_lenient, use_z, use_temperature,
-                          use_press_atmo);
+                          use_press_atmo, soft_root_convergence,
+                          soft_root_width_factor);
 
     // ----------
 
@@ -270,6 +285,10 @@ void AsterX_Con2Prim_typeEoS(CCTK_ARGUMENTS, EOSIDType *eos_1p,
                         rep_first);
         break;
       }
+      case c2p_first_t::RePrimAnd: {
+        c2p_RPA.solve(eos_3p, pv, cv, alp_avg, beta_avg, glo, rep_first);
+        break;
+      }
       case c2p_first_t::Palenzuela: {
         c2p_Pal.solve(eos_3p, pv, cv, alp_avg, beta_avg, glo, rep_first);
         break;
@@ -300,6 +319,10 @@ void AsterX_Con2Prim_typeEoS(CCTK_ARGUMENTS, EOSIDType *eos_1p,
         case c2p_second_t::Noble: {
           c2p_Noble.solve(eos_3p, pv, pv_seeds, cv, alp_avg, beta_avg, glo,
                           rep_second);
+          break;
+        }
+        case c2p_second_t::RePrimAnd: {
+          c2p_RPA.solve(eos_3p, pv, cv, alp_avg, beta_avg, glo, rep_second);
           break;
         }
         case c2p_second_t::Palenzuela: {
@@ -487,6 +510,18 @@ extern "C" void AsterX_Con2Prim(CCTK_ARGUMENTS) {
   DECLARE_CCTK_ARGUMENTS_AsterX_Con2Prim;
   DECLARE_CCTK_PARAMETERS;
 
+  if (CCTK_EQUALS(evolution_eos, "Hybrid") && thermal_eos_atmo) {
+    CCTK_ERROR("Hybrid EOS does not implement *_from_rho_temp_ye; set "
+               "Con2PrimFactory::thermal_eos_atmo = no.");
+  }
+  if (CCTK_EQUALS(evolution_eos, "Tabulated3d") && !use_temperature) {
+    CCTK_ERROR("Tabulated3d requires Con2PrimFactory::use_temperature = yes.");
+  }
+  if (CCTK_EQUALS(evolution_eos, "Tabulated3d") && use_press_atmo) {
+    CCTK_ERROR("Tabulated3d does not support eps_from_rho_press_ye; set "
+               "Con2PrimFactory::use_press_atmo = no.");
+  }
+
   // defining EOS objects
   eos_3param eos_3p_type;
 
@@ -571,21 +606,50 @@ extern "C" void AsterX_Con2Prim_Interpolate_Failed(CCTK_ARGUMENTS) {
           const vec<CCTK_REAL, 6> vely_nbs = get_neighbors(vely, p);
           const vec<CCTK_REAL, 6> velz_nbs = get_neighbors(velz, p);
           const vec<CCTK_REAL, 6> eps_nbs = get_neighbors(eps, p);
+          const vec<CCTK_REAL, 6> press_nbs = get_neighbors(press, p);
           const vec<CCTK_REAL, 6> saved_rho_nbs = get_neighbors(saved_rho, p);
           const vec<CCTK_REAL, 6> saved_velx_nbs = get_neighbors(saved_velx, p);
           const vec<CCTK_REAL, 6> saved_vely_nbs = get_neighbors(saved_vely, p);
           const vec<CCTK_REAL, 6> saved_velz_nbs = get_neighbors(saved_velz, p);
           const vec<CCTK_REAL, 6> saved_eps_nbs = get_neighbors(saved_eps, p);
 
-          CCTK_REAL sum_nbs =
-              sum<6>([&](int i) ARITH_INLINE { return flag_nbs(i); });
-          assert(sum_nbs > 0);
-          rho(p.I) = calc_avg_neighbors(flag_nbs, rho_nbs, saved_rho_nbs);
-          velx(p.I) = calc_avg_neighbors(flag_nbs, velx_nbs, saved_velx_nbs);
-          vely(p.I) = calc_avg_neighbors(flag_nbs, vely_nbs, saved_vely_nbs);
-          velz(p.I) = calc_avg_neighbors(flag_nbs, velz_nbs, saved_velz_nbs);
-          eps(p.I) = calc_avg_neighbors(flag_nbs, eps_nbs, saved_eps_nbs);
-          press(p.I) = (gl_gamma - 1) * eps(p.I) * rho(p.I);
+          const auto good_nb = [&](int i) ARITH_INLINE -> CCTK_REAL {
+            const CCTK_INT flag_i = CCTK_INT(flag_nbs(i));
+            return ((flag_i != C2P_FAIL) && (flag_i != C2P_INIT))
+                       ? CCTK_REAL(1)
+                       : CCTK_REAL(0);
+          };
+
+          const CCTK_REAL sum_nbs =
+              sum<6>([&](int i) ARITH_INLINE { return good_nb(i); });
+          if (sum_nbs <= CCTK_REAL(0)) {
+            return;
+          }
+
+          rho(p.I) = sum<6>([&](int i) ARITH_INLINE {
+                       return good_nb(i) * rho_nbs(i);
+                     }) /
+                     sum_nbs;
+          velx(p.I) = sum<6>([&](int i) ARITH_INLINE {
+                        return good_nb(i) * velx_nbs(i);
+                      }) /
+                      sum_nbs;
+          vely(p.I) = sum<6>([&](int i) ARITH_INLINE {
+                        return good_nb(i) * vely_nbs(i);
+                      }) /
+                      sum_nbs;
+          velz(p.I) = sum<6>([&](int i) ARITH_INLINE {
+                        return good_nb(i) * velz_nbs(i);
+                      }) /
+                      sum_nbs;
+          eps(p.I) = sum<6>([&](int i) ARITH_INLINE {
+                       return good_nb(i) * eps_nbs(i);
+                     }) /
+                     sum_nbs;
+          press(p.I) = sum<6>([&](int i) ARITH_INLINE {
+                         return good_nb(i) * press_nbs(i);
+                       }) /
+                       sum_nbs;
 
           /* reset flag */
           con2prim_flag(p.I) = C2P_AVG;

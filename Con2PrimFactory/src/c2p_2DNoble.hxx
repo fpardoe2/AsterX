@@ -20,7 +20,8 @@ public:
       CCTK_REAL tol, CCTK_REAL alp_thresh_in, CCTK_REAL vwlim, CCTK_REAL B_lim,
       CCTK_REAL rho_BH_in, CCTK_REAL eps_BH_in, CCTK_REAL vwlim_BH_in,
       CCTK_REAL sigma_max_in, CCTK_REAL inv_beta_max_in, bool ye_len,
-      bool use_z, bool use_temperature, bool use_pressure_atmo);
+      bool use_z, bool use_temperature, bool use_pressure_atmo,
+      bool soft_root_conv, CCTK_REAL soft_root_width_factor_in);
 
   CCTK_HOST CCTK_DEVICE CCTK_ATTRIBUTE_ALWAYS_INLINE inline CCTK_REAL
   get_Ssq_Exact(const vec<CCTK_REAL, 3> &mom,
@@ -78,7 +79,8 @@ CCTK_HOST
         CCTK_REAL B_lim, CCTK_REAL rho_BH_in, CCTK_REAL eps_BH_in,
         CCTK_REAL vwlim_BH_in, CCTK_REAL sigma_max_in,
         CCTK_REAL inv_beta_max_in, bool ye_len, bool use_z,
-        bool use_temperature, bool use_pressure_atmo) {
+        bool use_temperature, bool use_pressure_atmo, bool soft_root_conv,
+        CCTK_REAL soft_root_width_factor_in) {
 
   // Base
   atmo = atm;
@@ -98,6 +100,8 @@ CCTK_HOST
   use_zprim = use_z;
   use_temp = use_temperature;
   use_press_atmo = use_pressure_atmo;
+  soft_root_convergence = soft_root_conv;
+  soft_root_width_factor = fmax(CCTK_REAL(1.0), soft_root_width_factor_in);
 
   // Derived
   GammaIdealFluid = eos_3p->gamma;
@@ -286,6 +290,7 @@ c2p_2DNoble::solve(const EOSType *eos_3p, prim_vars &pv, prim_vars &pv_seeds,
   rep.iters = 0;
   rep.adjust_cons = false;
   rep.set_atmo = false;
+  rep.soft_root_conv = false;
   rep.status = c2p_report::SUCCESS;
 
   /* Check validity of the 3-metric and compute its inverse */
@@ -522,18 +527,26 @@ c2p_2DNoble::solve(const EOSType *eos_3p, prim_vars &pv, prim_vars &pv_seeds,
   //}
 
   if (fabs(errx) > tolerance) {
-    // set status to root not converged
-    rep.set_root_conv();
-    // status = ROOTSTAT::NOT_CONVERGED;
-    cv = cv_const;
-    return;
+    bool accept_soft = false;
+    if (soft_root_convergence && std::isfinite(errx)) {
+      const CCTK_REAL soft_tol = soft_root_width_factor * tolerance;
+      accept_soft = (fabs(errx) <= soft_tol);
+    }
+    if (!accept_soft) {
+      // set status to root not converged
+      rep.set_root_conv();
+      // status = ROOTSTAT::NOT_CONVERGED;
+      cv = cv_const;
+      return;
+    }
+    rep.set_soft_root_conv();
   }
 
   // Check for bad untrapped divergences
   if ((!isfinite(f)) || (!isfinite(df))) {
     rep.set_root_bracket();
-    // TODO: currently, divergences in f and df are marked as failed bracketing.
-    // Change this.
+    cv = cv_const;
+    return;
   }
 
   /* Calculate primitives from Z and W */

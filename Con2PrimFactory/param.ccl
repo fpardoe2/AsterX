@@ -6,6 +6,7 @@ no
 restricted :
 
 KEYWORD c2p_prime "Name of the main con2prim scheme" STEERABLE=ALWAYS {
+  "RePrimAnd" :: "RePrimAnd"
   "Noble" ::"Noble"
   "Palenzuela" ::"Palenzuela"
   "Entropy" ::"Entropy"
@@ -14,6 +15,7 @@ KEYWORD c2p_prime "Name of the main con2prim scheme" STEERABLE=ALWAYS {
 "Noble"
 
 KEYWORD c2p_second "Name of the backup con2prim scheme" STEERABLE=ALWAYS {
+  "RePrimAnd" :: "RePrimAnd"
   "Noble" ::"Noble"
   "Palenzuela" ::"Palenzuela"
   "Entropy" ::"Entropy"
@@ -52,6 +54,7 @@ CCTK_REAL B_lim "Upper limit for the value of magnetization" STEERABLE=ALWAYS
   0:            :: "Must be positive"
 }  100.0
 
+# Safe default for C2P robustness
 CCTK_REAL vw_lim "Upper limit for the value of velocity * lorentz_factor " STEERABLE=ALWAYS
 {
   0:            :: "Must be positive"
@@ -70,6 +73,19 @@ CCTK_REAL c2p_tol "c2p torelance for root finding" STEERABLE=ALWAYS
 {
   0:* :: "Larger than zero"
 } 1e-10
+
+BOOLEAN soft_root_convergence
+"Allow near-converged root solutions to be accepted as success (warning-only)."
+STEERABLE=ALWAYS
+{
+} "no"
+
+CCTK_REAL soft_root_width_factor
+"Relative bracket-width factor (x c2p_tol) used for near-converged root acceptance. Ignored unless soft_root_convergence=yes."
+STEERABLE=ALWAYS
+{
+  1.0:* :: "Must be >= 1"
+} 1.0
 
 CCTK_REAL tauFluid_atmo "Minimum conserved internal energy of fluid" STEERABLE=ALWAYS
 {

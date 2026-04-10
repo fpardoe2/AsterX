@@ -6,6 +6,7 @@
 #include "c2p.hxx"
 #include "c2p_1DEntropy.hxx"
 #include "c2p_1DPalenzuela.hxx"
+#include "c2p_1DRePrimAnd.hxx"
 #include "c2p_2DNoble.hxx"
 
 #include "c2p_utils.hxx"
@@ -66,17 +67,21 @@ extern "C" void Con2PrimFactory_Test(CCTK_ARGUMENTS) {
   //  Ye_lenient, use_z, use_temperature)
   c2p_2DNoble c2p_Noble(eos_3p_ig, atmo, 100, 1e-8, alp_thresh, 1, 1, rho_BH,
                         eps_BH, vwlim_BH, sigma_max, inv_beta_max, true, false,
-                        false, false);
+                        false, false, false, 1.0);
   c2p_1DPalenzuela c2p_Pal(eos_3p_ig, atmo, 100, 1e-8, alp_thresh, 1, 1, rho_BH,
                            eps_BH, vwlim_BH, sigma_max, inv_beta_max, true,
-                           false, false, false);
+                           false, false, false, false, 1.0);
+  c2p_1DRePrimAnd c2p_RPA(eos_3p_ig, atmo, 100, 1e-8, alp_thresh, 1, 1, rho_BH,
+                          eps_BH, vwlim_BH, sigma_max, inv_beta_max, true,
+                          false, false, false, false, 1.0);
   c2p_1DEntropy c2p_Ent(eos_3p_ig, atmo, 100, 1e-8, alp_thresh, 1, 1, rho_BH,
                         eps_BH, vwlim_BH, sigma_max, inv_beta_max, true, false,
-                        false, false);
+                        false, false, false, 1.0);
 
   // Construct error report object:
   c2p_report rep_Noble;
   c2p_report rep_Pal;
+  c2p_report rep_RPA;
   c2p_report rep_Ent;
 
   // Set primitive seeds
@@ -210,6 +215,45 @@ extern "C" void Con2PrimFactory_Test(CCTK_ARGUMENTS) {
     assert(pv.Bvec == pv_seeds.Bvec);
   */
   rep_Pal.debug_message();
+
+  // Testing C2P RePrimAnd
+  CCTK_VINFO("Testing C2P RePrimAnd...");
+  c2p_RPA.solve(eos_3p_ig, pv, cv_all, alp, beta, g, rep_RPA);
+
+  printf("pv_seeds, pv: \n"
+         "rho: %f, %f \n"
+         "eps: %f, %f \n"
+         "Ye: %f, %f \n"
+         "press: %f, %f \n"
+         "temperature: %f, %f \n"
+         "entropy: %f, %f \n"
+         "velx: %f, %f \n"
+         "vely: %f, %f \n"
+         "velz: %f, %f \n"
+         "Bx: %f, %f \n"
+         "By: %f, %f \n"
+         "Bz: %f, %f \n",
+         pv_seeds.rho, pv.rho, pv_seeds.eps, pv.eps, pv_seeds.Ye, pv.Ye,
+         pv_seeds.press, pv.press, pv_seeds.temperature, pv.temperature,
+         pv_seeds.entropy, pv.entropy, pv_seeds.vel(0), pv.vel(0),
+         pv_seeds.vel(1), pv.vel(1), pv_seeds.vel(2), pv.vel(2),
+         pv_seeds.Bvec(0), pv.Bvec(0), pv_seeds.Bvec(1), pv.Bvec(1),
+         pv_seeds.Bvec(2), pv.Bvec(2));
+  printf("cv: \n"
+         "dens: %f \n"
+         "tau: %f \n"
+         "momx: %f \n"
+         "momy: %f \n"
+         "momz: %f \n"
+         "DYe: %f \n"
+         "dBx: %f \n"
+         "dBy: %f \n"
+         "dBz: %f \n"
+         "DEnt: %f \n",
+         cv_all.dens, cv_all.tau, cv_all.mom(0), cv_all.mom(1), cv_all.mom(2),
+         cv_all.DYe, cv_all.dBvec(0), cv_all.dBvec(1), cv_all.dBvec(2),
+         cv_all.DEnt);
+  rep_RPA.debug_message();
 
   // Testing C2P Entropy
   CCTK_VINFO("Testing C2P Entropy...");

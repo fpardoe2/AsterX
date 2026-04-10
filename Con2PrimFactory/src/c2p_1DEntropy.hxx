@@ -17,7 +17,8 @@ public:
       CCTK_REAL tol, CCTK_REAL alp_thresh_in, CCTK_REAL vwlim, CCTK_REAL B_lim,
       CCTK_REAL rho_BH_in, CCTK_REAL eps_BH_in, CCTK_REAL vwlim_BH_in,
       CCTK_REAL sigma_max_in, CCTK_REAL inv_beta_max_in, bool ye_len,
-      bool use_z, bool use_temperature, bool use_pressure_atmo);
+      bool use_z, bool use_temperature, bool use_pressure_atmo,
+      bool soft_root_conv, CCTK_REAL soft_root_width_factor_in);
 
   CCTK_HOST CCTK_DEVICE CCTK_ATTRIBUTE_ALWAYS_INLINE inline CCTK_REAL
   get_Ssq_Exact(const vec<CCTK_REAL, 3> &mom,
@@ -66,7 +67,8 @@ CCTK_HOST CCTK_DEVICE
         CCTK_REAL B_lim, CCTK_REAL rho_BH_in, CCTK_REAL eps_BH_in,
         CCTK_REAL vwlim_BH_in, CCTK_REAL sigma_max_in,
         CCTK_REAL inv_beta_max_in, bool ye_len, bool use_z,
-        bool use_temperature, bool use_pressure_atmo) {
+        bool use_temperature, bool use_pressure_atmo, bool soft_root_conv,
+        CCTK_REAL soft_root_width_factor_in) {
 
   // Base
   atmo = atm;
@@ -86,6 +88,8 @@ CCTK_HOST CCTK_DEVICE
   use_zprim = use_z;
   use_temp = use_temperature;
   use_press_atmo = use_pressure_atmo;
+  soft_root_convergence = soft_root_conv;
+  soft_root_width_factor = fmax(CCTK_REAL(1.0), soft_root_width_factor_in);
 
   // Derived
   GammaIdealFluid = eos_3p->gamma;
@@ -270,10 +274,11 @@ c2p_1DEntropy::solve(const EOSType *eos_3p, prim_vars &pv, cons_vars &cv,
                      const CCTK_REAL alp, const vec<CCTK_REAL, 3> &beta,
                      const smat<CCTK_REAL, 3> &glo, c2p_report &rep) const {
 
-  // ROOTSTAT status = ROOTSTAT::SUCCESS;
+  ROOTSTAT status = ROOTSTAT::SUCCESS;
   rep.iters = 0;
   rep.adjust_cons = false;
   rep.set_atmo = false;
+  rep.soft_root_conv = false;
   rep.status = c2p_report::SUCCESS;
 
   /* Check validity of the 3-metric and compute its inverse */
@@ -361,6 +366,12 @@ c2p_1DEntropy::solve(const EOSType *eos_3p, prim_vars &pv, cons_vars &cv,
   // const CCTK_INT minbits = std::numeric_limits<CCTK_REAL>::digits - 4;
   const CCTK_INT maxiters = maxIterations;
 
+  const CCTK_REAL f_a0 = fn(a);
+  const CCTK_REAL f_b0 = fn(b);
+  if ((!isfinite(f_a0)) || (!isfinite(f_b0)) || (f_a0 * f_b0 > 0.0)) {
+    status = ROOTSTAT::NOT_BRACKETED;
+  }
+
   auto result = Algo::brent(fn, a, b, minbits, maxiters, rep.iters);
 
   CCTK_REAL xEntropy_Sol = 0.5 * (result.first + result.second);
@@ -389,14 +400,32 @@ c2p_1DEntropy::solve(const EOSType *eos_3p, prim_vars &pv, cons_vars &cv,
     return;
   }
 
-  if (abs(result.first - result.second) >
-      tolerance_0 * min(abs(result.first), abs(result.second))) {
-
-    // set status to root not converged
-    rep.set_root_conv();
-    cv = cv_const;
-    // status = ROOTSTAT::NOT_CONVERGED;
-    return;
+  const CCTK_REAL root_width = abs(result.first - result.second);
+  const CCTK_REAL strict_width_tol =
+      tolerance_0 * min(abs(result.first), abs(result.second));
+  if (root_width > strict_width_tol) {
+    bool accept_soft = false;
+    if (soft_root_convergence) {
+      const CCTK_REAL scale =
+          fmax(CCTK_REAL(0.0), fmax(abs(result.first), abs(result.second)));
+      const CCTK_REAL soft_width_tol =
+          soft_root_width_factor * tolerance * scale;
+      accept_soft = std::isfinite(root_width) && std::isfinite(soft_width_tol) &&
+                    (root_width <= soft_width_tol);
+    }
+    if (!accept_soft) {
+      // set status to root not converged / not bracketed
+      if (status == ROOTSTAT::NOT_BRACKETED) {
+        rep.set_root_bracket();
+      } else {
+        rep.set_root_conv();
+        status = ROOTSTAT::NOT_CONVERGED;
+      }
+      cv = cv_const;
+      (void)status;
+      return;
+    }
+    rep.set_soft_root_conv();
   }
 
   // set to atmo if computed rho is below floor density

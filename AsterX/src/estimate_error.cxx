@@ -21,7 +21,7 @@ enum class regrid_t {
 };
 regrid_t regridMethod;
 vector<int> regridVarsI;
-vector<array<int, Loop::dim>> indextypeRegridVars;
+vector<array<int, Loop::dim> > indextypeRegridVars;
 
 extern "C" void AsterX_EstimateError_Setup(CCTK_ARGUMENTS) {
   DECLARE_CCTK_PARAMETERS;
