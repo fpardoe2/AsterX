@@ -254,17 +254,17 @@ c2p::prims_floors_and_ceilings(const EOSType *eos_3p, prim_vars &pv,
     rep.adjust_cons = true;
 
     if (use_temp) {
-      // Revert pressure change above for tabulated EOS
-      // TODO: Add functionality to support inv_beta limit w
-      // tabulated EOS
+      // Recompute T from adjusted rho, P
+      pv.temperature = eos_3p->temp_from_rho_press_ye(pv.rho, pv.press, pv.Ye);
       pv.eps = eos_3p->eps_from_rho_temp_ye(pv.rho, pv.temperature, pv.Ye);
-      pv.press = eos_3p->press_from_rho_temp_ye(pv.rho, pv.temperature, pv.Ye);
-    } else {
+      pv.entropy = eos_3p->entropy_from_rho_temp_ye(pv.rho, pv.temperature, pv.Ye);
+    }
+    else {
       pv.eps = eos_3p->eps_from_rho_press_ye(pv.rho, pv.press, pv.Ye);
       pv.temperature = eos_3p->temp_from_rho_eps_ye(pv.rho, pv.eps, pv.Ye);
+      pv.entropy = eos_3p->kappa_from_rho_eps_ye(pv.rho, pv.eps, pv.Ye);
     }
 
-    pv.entropy = eos_3p->kappa_from_rho_eps_ye(pv.rho, pv.eps, pv.Ye);
     mag_ceiling = false;
 
     // Drift floors from https://arxiv.org/pdf/1611.09365

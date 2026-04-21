@@ -198,6 +198,37 @@ public:
                       func);
   }
 
+  template<size_t var>
+  CCTK_HOST CCTK_DEVICE inline CCTK_REAL
+  logrho_from_var_temp_ye(CCTK_REAL &invar, const CCTK_REAL temp, 
+                                const CCTK_REAL ye) const {
+    // bound inputs
+    CCTK_REAL t = std::fmin(std::fmax(temp, rgtemp.min), rgtemp.max);
+    CCTK_REAL lt = std::log(t);
+
+    // table‐edge clamp
+    auto vmin =
+        interptable->interpolate<var>(interptable->xmin<0>(), lt, ye)[0];
+    auto vmax =
+        interptable->interpolate<var>(interptable->xmax<0>(), lt, ye)[0];
+    if (invar <= vmin) {
+      invar = vmin;
+      return interptable->xmin<0>();
+    }
+    if (invar >= vmax) {
+      invar = vmax;
+      return interptable->xmax<0>();
+    }
+
+    // root‐find for logrho
+    auto func = [&](CCTK_REAL &lrho) {
+      CCTK_REAL val = interptable->interpolate<var>(lrho, lt, ye)[0];
+      return invar - val;
+    };
+    return zero_brent(interptable->xmin<0>(), interptable->xmax<0>(), 1.e-14,
+                      func);
+  }
+
   CCTK_HOST CCTK_DEVICE inline CCTK_REAL
   logtemp_from_rho_eps_ye(const CCTK_REAL rho, CCTK_REAL &eps,
                           const CCTK_REAL ye) const {
@@ -221,6 +252,24 @@ public:
                            const CCTK_REAL ye) const {
     CCTK_REAL lt = logtemp_from_rho_var_ye<EV::S>(rho, ent, ye);
     return exp(lt);
+  }
+
+  CCTK_HOST CCTK_DEVICE inline CCTK_REAL
+  temp_from_rho_press_ye(const CCTK_REAL rho, CCTK_REAL &press,
+                                const CCTK_REAL ye) const {
+    CCTK_REAL lP = log(press);
+    CCTK_REAL lt = logtemp_from_rho_var_ye<EV::PRESS>(rho, lP, ye);
+    press = exp(lP);
+    return exp(lt);
+  }
+
+  CCTK_HOST CCTK_DEVICE inline CCTK_REAL
+  rho_from_press_temp_ye(CCTK_REAL &press, const CCTK_REAL temp,
+                                const CCTK_REAL ye) const {
+    CCTK_REAL lP = log(press);
+    CCTK_REAL lr = logrho_from_var_temp_ye<EV::PRESS>(lP, temp, ye);
+    press = exp(lP);
+    return exp(lr);
   }
 
   CCTK_HOST CCTK_DEVICE inline CCTK_REAL

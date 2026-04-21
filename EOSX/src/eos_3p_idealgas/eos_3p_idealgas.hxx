@@ -76,6 +76,25 @@ public:
     return temp_over_eps * eps;
   }
 
+  CCTK_HOST CCTK_DEVICE CCTK_ATTRIBUTE_ALWAYS_INLINE inline CCTK_REAL
+  temp_from_rho_press_ye(
+      const CCTK_REAL rho, ///< Rest mass density  \f$ \rho \f$
+      CCTK_REAL &press,    ///< Pressure \f$ P \f$
+      const CCTK_REAL ye   ///< Electron fraction \f$ Y_e \f$
+  ) const {
+    CCTK_REAL eps = eps_from_rho_press_ye(rho, press, ye);
+    return temp_over_eps * eps;
+  }
+
+  CCTK_HOST CCTK_DEVICE CCTK_ATTRIBUTE_ALWAYS_INLINE inline CCTK_REAL
+  rho_from_press_temp_ye(
+      CCTK_REAL &press,     ///< Pressure \f$ P \f$
+      const CCTK_REAL temp, ///< Temperature \f$ T \f$
+      const CCTK_REAL ye   ///< Electron fraction \f$ Y_e \f$
+  ) const{
+    return press * temp_over_eps / (temp * gm1);
+  }
+
   CCTK_HOST CCTK_DEVICE CCTK_ATTRIBUTE_ALWAYS_INLINE inline void
   press_derivs_from_rho_eps_ye(
       CCTK_REAL &press,  ///< Pressure \f$ P \f$

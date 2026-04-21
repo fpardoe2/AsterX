@@ -135,11 +135,13 @@ CCTK_REAL Ez TYPE=gf CENTERING={vvc} TAGS='checkpoint="no"' "z-component of E"
 
 CCTK_REAL con2prim_flag TYPE=gf CENTERING={ccc} TAGS='checkpoint="no"' "Flag indicating failure of con2prim"
 
+# TODO: move volform to ADMBaseX
 CCTK_REAL diagnostics TYPE=gf CENTERING={ccc} TAGS='checkpoint="no"'
 {
   w_lorentz
   B_norm
   b2small
+  volform
 } "Diagnostic grid functions"
 
 # saved_prims are computed only once at the beginning of the simulation

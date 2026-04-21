@@ -223,18 +223,22 @@ void CalcFlux(CCTK_ARGUMENTS, EOSType *eos_3p, const rec_var_t rec_var,
 
     // Setting up atmosphere for two neighboring cell centers
     vec<CCTK_REAL, 2> r_atm;
+    vec<CCTK_REAL, 2> r2_atm = {0.0, 0.0};
     vec<CCTK_REAL, 2> rho_atm;
     vec<CCTK_REAL, 2> rho_cut;
     vec<CCTK_REAL, 2> press_atm;
     vec<CCTK_REAL, 2> eps_atm;
     vec<CCTK_REAL, 2> temp_atm;
 
-    const auto coord_i = p.X;
-    const auto coord_im = p.X - p.DX[dir_i];
-    r_atm(0) = sqrt(coord_im[0] * coord_im[0] + coord_im[1] * coord_im[1] +
-                    coord_im[2] * coord_im[2]);
-    r_atm(1) = sqrt(coord_i[0] * coord_i[0] + coord_i[1] * coord_i[1] +
-                    coord_i[2] * coord_i[2]);
+    // Get coordinates at neighboring cell centers
+    for (int ii = 0; ii < 3; ii++) {
+      r2_atm(0) += (p.X[ii] - (ii == dir_i) * 0.5 * (p.DX[dir_i])) *
+                   (p.X[ii] - (ii == dir_i) * 0.5 * (p.DX[dir_i]));
+      r2_atm(1) += (p.X[ii] + (ii == dir_i) * 0.5 * (p.DX[dir_i])) *
+                   (p.X[ii] + (ii == dir_i) * 0.5 * (p.DX[dir_i]));
+    }
+    r_atm(0) = sqrt(r2_atm(0));
+    r_atm(1) = sqrt(r2_atm(1));
 
     // Grading rho
     rho_atm(0) = (r_atm(0) > r_atmo)
@@ -733,15 +737,23 @@ void CalcFlux(CCTK_ARGUMENTS, EOSType *eos_3p, const rec_var_t rec_var,
           (dir_i != 2) * laxf(lambda, Btildes_rc(2), flux_Btildes(2));
     }
 
-    if (use_pplim) {
+    /* Positivity Preserving Limiter */
+    // First, check if both cells are in the atmosphere. If so, and the
+    // atmosphere is graded, the PP limiter can be spuriously activated before
+    // the cell is reset to atmosphere after the evolution step, making
+    // debugging difficult. At face Ip, Ip refers to the right cell and Im
+    // refers to the left.
+    const auto Ip = p.I;
+    const auto Im = p.I - p.DI[dir_i];
 
-      // At face Ip, Ip refers to the right cell and Im refers to the left
-      const auto Ip = p.I;
-      const auto Im = p.I - p.DI[dir_i];
+    vec<CCTK_REAL, 2> rho_ppl = {rho(Im), rho(Ip)};
+    const bool ppl_atmo = ((rho_ppl(0) <= rho_atm(0) * (1 + atmo_tol)) &&
+                           (rho_ppl(1) <= rho_atm(1) * (1 + atmo_tol)));
+
+    if (use_pplim && !ppl_atmo) {
 
       /* BEGIN REPEATED RECONSTRUCTION CODE */
       // Copy fluid quantities from cell center to face
-      vec<CCTK_REAL, 2> rho_ppl = {rho(Im), rho(Ip)};
       vec<CCTK_REAL, 2> entropy_ppl = {entropy(Im), entropy(Ip)};
       vec<CCTK_REAL, 2> Ye_ppl = {Ye(Im), Ye(Ip)};
       vec<CCTK_REAL, 2> eps_ppl = {eps(Im), eps(Ip)};
@@ -1124,8 +1136,15 @@ void CalcFlux(CCTK_ARGUMENTS, EOSType *eos_3p, const rec_var_t rec_var,
     const CCTK_REAL vj_face = avg_upwind(vjL, vjR, ap, am);
     const CCTK_REAL vk_face = avg_upwind(vkL, vkR, ap, am);
 
-    vbar_j(dir_i)(p.I) = vj_face;
-    vbar_k(dir_i)(p.I) = vk_face;
+    const CCTK_REAL theta_uct = gf_theta(dir_i)(p.I);
+    vbar_j(dir_i)(p.I) =
+        theta_uct * vj_face +
+        (1.0 - theta_uct) * 0.5 *
+            (gf_vels(dir_j)(p.I) + gf_vels(dir_j)(p.I - p.DI[dir_i]));
+    vbar_k(dir_i)(p.I) =
+        theta_uct * vk_face +
+        (1.0 - theta_uct) * 0.5 *
+            (gf_vels(dir_k)(p.I) + gf_vels(dir_k)(p.I - p.DI[dir_i]));
 
     /* End code for upwindCT */
   });

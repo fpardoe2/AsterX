@@ -42,13 +42,11 @@ extern "C" void AsterSeeds_InitializeCenteredAvec_TOV(CCTK_ARGUMENTS) {
           CCTK_REAL x_local = p.x - dipole_x[0];
           CCTK_REAL y_local = p.y - dipole_y[0];
           CCTK_REAL z_local = p.z - dipole_z[0];
-          CCTK_REAL cylrad2 = x_local * x_local + y_local * y_local;
           CCTK_REAL rsph =
               sqrt(x_local * x_local + y_local * y_local + z_local * z_local);
           CCTK_REAL rsph3 = pow(rsph, 3.0);
           CCTK_REAL r03 = pow(r0, 3.0);
-          CCTK_REAL Aphi_local =
-              B0 * (r03 / (r03 + rsph3)) / sqrt(cylrad2 + 1.0e-16);
+          CCTK_REAL Aphi_local = B0 * (r03 / (r03 + rsph3));
           Avec_x_cent(p.I) = -y_local * Aphi_local;
           Avec_y_cent(p.I) = x_local * Aphi_local;
           Avec_z_cent(p.I) = 0.0;

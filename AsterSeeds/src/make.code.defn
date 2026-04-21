@@ -8,6 +8,7 @@ SRCS =	\
   TabEOS_tests.cxx \
   atmosphere.cxx \
   bbhcloud.cxx \
+  initial_betafloor.cxx \
   magTOV.cxx \
   magBNS.cxx \
   SetTempEntropyYe.cxx

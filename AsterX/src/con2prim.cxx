@@ -501,6 +501,7 @@ void AsterX_Con2Prim_typeEoS(CCTK_ARGUMENTS, EOSIDType *eos_1p,
     w_lorentz(p.I) = wlor;
     B_norm(p.I) = sqrt(B2);
     b2small(p.I) = bsq;
+    volform(p.I) = sqrt_detg;
   };
 
   cctk_grid.loop_all_device<1, 1, 1>(grid.nghostzones, c2p_impl);
