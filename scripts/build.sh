@@ -17,6 +17,18 @@ cp "$ASTERXSPACE/scripts/actions-$ACCELERATOR-$REAL_PRECISION.sub" ./simfactory/
 cp "$ASTERXSPACE/scripts/asterx.th" .
 cp "$ASTERXSPACE/scripts/defs.local.ini" ./simfactory/etc
 
+# Compiler cache: cuts warm CI rebuilds dramatically. The .ccache dir is
+# persisted across runs by actions/cache (see .github/workflows/ci.yml).
+# No-op if ccache is not installed. We prepend "ccache " to CC and CXX in the
+# copied option list (matches ../AnalysisX/scripts/build.sh).
+if command -v ccache >/dev/null 2>&1; then
+    export CCACHE_DIR="${CCACHE_DIR:-$ASTERXSPACE/.ccache}"
+    ccache --max-size=2G
+    ccache --zero-stats || true
+    sed -i -e 's/^CC = /CC = ccache /' -e 's/^CXX = /CXX = ccache /' \
+        "./simfactory/mdb/optionlists/actions-$ACCELERATOR-$REAL_PRECISION.cfg"
+fi
+
 # For Formaline
 git config --global user.email "asterx@einsteintoolkit.org"
 git config --global user.name "Github Actions"
@@ -28,3 +40,6 @@ time ./simfactory/bin/sim --machine="actions-$ACCELERATOR-$REAL_PRECISION" build
 
 # Check whether the executable exists and is executable
 test -x exe/cactus_sim
+
+# Report cache effectiveness (warm runs should show a high hit rate).
+command -v ccache >/dev/null 2>&1 && ccache --show-stats || true

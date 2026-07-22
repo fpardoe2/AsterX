@@ -22,6 +22,29 @@ ONEPROC_DIR="$(./simfactory/bin/sim --machine="actions-$ACCELERATOR-$REAL_PRECIS
 time ./simfactory/bin/sim --machine="actions-$ACCELERATOR-$REAL_PRECISION" create-run TestJob01_temp_2 --cores 2 --num-threads 1 --testsuite --select-tests=AsterX
 TWOPROC_DIR="$(./simfactory/bin/sim --machine="actions-$ACCELERATOR-$REAL_PRECISION" get-output-dir TestJob01_temp_2)/TEST/sim"
 
+# Export the produced test-output dirs so the optional golden-master
+# comparison step (ci.yml) can diff produced TSV against the committed
+# reference at a tight tolerance. Harmless outside GitHub Actions.
+if [ -n "${GITHUB_ENV:-}" ]; then
+    echo "ONEPROC_DIR=${ONEPROC_DIR}" >>"${GITHUB_ENV}"
+    echo "TWOPROC_DIR=${TWOPROC_DIR}" >>"${GITHUB_ENV}"
+fi
+
+# Surface the per-routine timings (AsterX_Fluxes etc.) to the CI log, so they
+# are readable inline without downloading the artifact. The pars activate
+# TimerReport, which dumps every flesh timer -- including routines driven inside
+# the ODESolvers RHS group that Cactus::cctk_timer_output's schedule-bin view
+# hides -- to AllTimersReadable.txt in each test's output dir. print_timers.py
+# prints, per test, the hottest AsterX routines from the final report block,
+# sorted by wall time. The full timer files (AllTimers.{txt,csv,tsv}, per-proc
+# TimerReport.*.txt) are captured by the CI artifact.
+# Quiet xtrace here so the trace does not dump the raw multi-column timer rows.
+set +x
+echo '=== AsterX per-routine timers (TimerReport, final report per test) ==='
+python3 "$ASTERXSPACE/scripts/print_timers.py" "${ONEPROC_DIR}" "${TWOPROC_DIR}" || true
+set -x
+echo '================================================================================'
+
 # # Parse results and generate plots
 # cd "$PAGESSPACE"
 # python3 "$ASTERXSPACE/scripts/store.py" "$WORKSPACE/Cactus/repos/AsterX" "$ONEPROC_DIR" "$TWOPROC_DIR"
