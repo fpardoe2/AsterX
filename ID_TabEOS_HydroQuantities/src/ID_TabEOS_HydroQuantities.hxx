@@ -21,7 +21,7 @@ private:
   int nrho;
 
 public:
-  bool interp_err{false};
+  mutable bool interp_err{false};
 
   CCTK_HOST CCTK_ATTRIBUTE_ALWAYS_INLINE inline void
   init(int init_nrho, FILE *init_in1D, double *init_logrho_arr,
@@ -42,6 +42,13 @@ public:
     read_1dfile__set_array();
 
     return;
+  }
+
+  CCTK_HOST CCTK_ATTRIBUTE_ALWAYS_INLINE inline void release() {
+    The_Managed_Arena()->free(Ye_rho_arr);
+    The_Managed_Arena()->free(rho_arr);
+    Ye_rho_arr = nullptr;
+    rho_arr = nullptr;
   }
 
   CCTK_HOST CCTK_ATTRIBUTE_ALWAYS_INLINE inline void
@@ -67,7 +74,7 @@ public:
   CCTK_HOST CCTK_DEVICE CCTK_ATTRIBUTE_ALWAYS_INLINE inline CCTK_REAL
   interpolate_1d_quantity_as_function_of_rho(const int interp_stencil_size,
                                              const int numlines_in_file,
-                                             const CCTK_REAL rho) {
+                                             const CCTK_REAL rho) const {
     // CCTK_REAL *restrict f_of_rho) {
 
     // First find the central interpolation stencil index:
@@ -120,7 +127,7 @@ public:
   // Find interpolation index using Bisection root-finding algorithm:
   CCTK_HOST CCTK_DEVICE CCTK_ATTRIBUTE_ALWAYS_INLINE inline int
   bisection_idx_finder(const CCTK_REAL rrbar, const int numlines_in_file,
-                       const CCTK_REAL *restrict rbar_arr) {
+                       const CCTK_REAL *restrict rbar_arr) const {
     int x1 = 0;
     int x2 = numlines_in_file - 1;
     CCTK_REAL y1 = rrbar - rbar_arr[x1];

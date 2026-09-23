@@ -244,7 +244,15 @@ void AsterX_Con2Prim_typeEoS(CCTK_ARGUMENTS, EOSIDType *eos_1p,
     CCTK_INT c2p_flag_code = C2P_INIT;
     bool call_c2p = true;
 
-    if (cv.dens <= sqrt_detg * rho_atmo_cut) {
+    // Check if point is below atmosphere, and if atmosphere obeys magnetization
+    // limits (RPA only). Magnetization limits are currently only applied for RPA C2P, 
+    // while they are not obeyed in the other cases in the atmopshere -> TODO
+    const CCTK_REAL b2_atm = calc_norm(Bup, glo);
+    const bool set_atmo = (cv.dens <= sqrt_detg * rho_atmo_cut) &&
+                          (c2p_off_floor_strict ||
+                           ((b2_atm / rho_atm <= sigma_max) &&
+                            (b2_atm / (2 * press_atm) <= inv_beta_max)));
+    if (set_atmo) {
       pv.Bvec = Bup;
       atmo.set(pv, cv, glo);
       atmo.set(pv_seeds);
@@ -288,15 +296,17 @@ void AsterX_Con2Prim_typeEoS(CCTK_ARGUMENTS, EOSIDType *eos_1p,
       switch (c2p_fir) {
       case c2p_first_t::Noble: {
         c2p_Noble.solve(eos_3p, pv, pv_seeds, cv, alp_avg, beta_avg, glo,
-                        rep_first);
+                        rep_first, use_entropy_fix);
         break;
       }
       case c2p_first_t::RePrimAnd: {
-        c2p_RPA.solve(eos_3p, pv, cv, alp_avg, beta_avg, glo, rep_first);
+        c2p_RPA.solve(eos_3p, pv, cv, alp_avg, beta_avg, glo, rep_first,
+                      use_entropy_fix);
         break;
       }
       case c2p_first_t::Palenzuela: {
-        c2p_Pal.solve(eos_3p, pv, cv, alp_avg, beta_avg, glo, rep_first);
+        c2p_Pal.solve(eos_3p, pv, cv, alp_avg, beta_avg, glo, rep_first,
+                      use_entropy_fix);
         break;
       }
       case c2p_first_t::Entropy: {
@@ -324,15 +334,17 @@ void AsterX_Con2Prim_typeEoS(CCTK_ARGUMENTS, EOSIDType *eos_1p,
         switch (c2p_sec) {
         case c2p_second_t::Noble: {
           c2p_Noble.solve(eos_3p, pv, pv_seeds, cv, alp_avg, beta_avg, glo,
-                          rep_second);
+                          rep_second, use_entropy_fix);
           break;
         }
         case c2p_second_t::RePrimAnd: {
-          c2p_RPA.solve(eos_3p, pv, cv, alp_avg, beta_avg, glo, rep_second);
+          c2p_RPA.solve(eos_3p, pv, cv, alp_avg, beta_avg, glo, rep_second,
+                        use_entropy_fix);
           break;
         }
         case c2p_second_t::Palenzuela: {
-          c2p_Pal.solve(eos_3p, pv, cv, alp_avg, beta_avg, glo, rep_second);
+          c2p_Pal.solve(eos_3p, pv, cv, alp_avg, beta_avg, glo, rep_second,
+                        use_entropy_fix);
           break;
         }
         case c2p_second_t::Entropy: {

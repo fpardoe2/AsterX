@@ -43,9 +43,9 @@ wenoz(T gf_Imm, T gf_Im, T gf_I, T gf_Ip, T gf_Ipp, T weno_eps) {
   // Optimal weights are chosen according to Del Zanna et al. 2007
 
   vec<T, 3> aux_alphaZ;
-  aux_alphaZ(0) = 1.0 + tau5 / (betaZ(0) + weno_eps);
-  aux_alphaZ(1) = 1.0 + tau5 / (betaZ(1) + weno_eps);
-  aux_alphaZ(2) = 1.0 + tau5 / (betaZ(2) + weno_eps);
+  aux_alphaZ(0) = 1.0 + pow2(tau5 / (betaZ(0) + weno_eps));
+  aux_alphaZ(1) = 1.0 + pow2(tau5 / (betaZ(1) + weno_eps));
+  aux_alphaZ(2) = 1.0 + pow2(tau5 / (betaZ(2) + weno_eps));
   const vec<T, 3> wt = {5.0 / 16.0, 10.0 / 16.0, 1.0 / 16.0};
   // Original weights as suggested in (Borges et al. 2008)
   // const vec<T, 3> wt{3.0 / 10.0, 3.0 / 5.0, 1.0 / 10.0};

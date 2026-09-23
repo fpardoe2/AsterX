@@ -41,7 +41,8 @@ public:
   CCTK_HOST CCTK_DEVICE CCTK_ATTRIBUTE_ALWAYS_INLINE inline void
   xPalenzuelaToPrim(CCTK_REAL xPalenzuela_Sol, CCTK_REAL Ssq, CCTK_REAL Bsq,
                     CCTK_REAL BiSi, const EOSType *eos_3p, prim_vars &pv,
-                    const cons_vars &cv, const smat<CCTK_REAL, 3> &gup,
+                    CCTK_REAL &eps_raw, const cons_vars &cv,
+                    const smat<CCTK_REAL, 3> &gup,
                     const smat<CCTK_REAL, 3> &glo) const;
 
   template <typename EOSType>
@@ -54,7 +55,8 @@ public:
   CCTK_HOST CCTK_DEVICE CCTK_ATTRIBUTE_ALWAYS_INLINE inline void
   solve(const EOSType *eos_3p, prim_vars &pv, cons_vars &cv,
         const CCTK_REAL alp, const vec<CCTK_REAL, 3> &beta,
-        const smat<CCTK_REAL, 3> &glo, c2p_report &rep) const;
+        const smat<CCTK_REAL, 3> &glo, c2p_report &rep,
+        bool reject_nonpositive_eps = false) const;
 
   /* Destructor */
   CCTK_HOST CCTK_DEVICE ~c2p_1DPalenzuela();
@@ -151,7 +153,7 @@ CCTK_HOST CCTK_DEVICE CCTK_ATTRIBUTE_ALWAYS_INLINE inline void
 c2p_1DPalenzuela::xPalenzuelaToPrim(CCTK_REAL xPalenzuela_Sol, CCTK_REAL Ssq,
                                     CCTK_REAL Bsq, CCTK_REAL BiSi,
                                     const EOSType *eos_3p, prim_vars &pv,
-                                    const cons_vars &cv,
+                                    CCTK_REAL &eps_raw, const cons_vars &cv,
                                     const smat<CCTK_REAL, 3> &gup,
                                     const smat<CCTK_REAL, 3> &glo) const {
   const CCTK_REAL qPalenzuela = cv.tau / cv.dens;
@@ -173,11 +175,13 @@ c2p_1DPalenzuela::xPalenzuelaToPrim(CCTK_REAL xPalenzuela_Sol, CCTK_REAL Ssq,
   pv.rho = cv.dens / W_sol;
 
   // (iii)
-  pv.eps = W_sol - 1.0 + (1.0 - W_sol * W_sol) * xPalenzuela_Sol / W_sol +
-           W_sol * (qPalenzuela - sPalenzuela +
-                    tPalenzuela * tPalenzuela /
-                        (2 * xPalenzuela_Sol * xPalenzuela_Sol) +
-                    sPalenzuela / (2.0 * W_sol * W_sol));
+  eps_raw = W_sol - 1.0 +
+            (1.0 - W_sol * W_sol) * xPalenzuela_Sol / W_sol +
+            W_sol * (qPalenzuela - sPalenzuela +
+                     tPalenzuela * tPalenzuela /
+                         (2 * xPalenzuela_Sol * xPalenzuela_Sol) +
+                     sPalenzuela / (2.0 * W_sol * W_sol));
+  pv.eps = eps_raw;
 
   // TODO: Using this check here can lead to corrections of negative eps
   //       which could be accepted in certain cases. Thus, these cases will
@@ -313,7 +317,8 @@ template <typename EOSType>
 CCTK_HOST CCTK_DEVICE CCTK_ATTRIBUTE_ALWAYS_INLINE inline void
 c2p_1DPalenzuela::solve(const EOSType *eos_3p, prim_vars &pv, cons_vars &cv,
                         const CCTK_REAL alp, const vec<CCTK_REAL, 3> &beta,
-                        const smat<CCTK_REAL, 3> &glo, c2p_report &rep) const {
+                        const smat<CCTK_REAL, 3> &glo, c2p_report &rep,
+                        bool reject_nonpositive_eps) const {
 
   ROOTSTAT status = ROOTSTAT::SUCCESS;
   rep.iters = 0;
@@ -457,7 +462,9 @@ c2p_1DPalenzuela::solve(const EOSType *eos_3p, prim_vars &pv, cons_vars &cv,
 
   CCTK_REAL xPalenzuela_Sol = CCTK_REAL(0.5) * (result.first + result.second);
 
-  xPalenzuelaToPrim(xPalenzuela_Sol, Ssq, Bsq, BiSi, eos_3p, pv, cv, gup, glo);
+  CCTK_REAL eps_raw;
+  xPalenzuelaToPrim(xPalenzuela_Sol, Ssq, Bsq, BiSi, eos_3p, pv, eps_raw, cv,
+                    gup, glo);
 
   // Error out if rho is negative or zero
   if (pv.rho <= 0.0) {
@@ -467,10 +474,10 @@ c2p_1DPalenzuela::solve(const EOSType *eos_3p, prim_vars &pv, cons_vars &cv,
     return;
   }
 
-  // Error out if eps is negative or zero
-  if (pv.eps <= 0.0) {
-    // set status to eps is out of range
-    rep.set_range_eps(pv.eps);
+  // Let the usual temperature floor repair non-positive eps unless the caller
+  // has an entropy-based fallback available.
+  if (reject_nonpositive_eps && eps_raw <= 0.0) {
+    rep.set_range_eps(eps_raw);
     cv = cv_const;
     return;
   }

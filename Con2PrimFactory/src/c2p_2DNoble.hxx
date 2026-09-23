@@ -64,7 +64,8 @@ public:
   CCTK_HOST CCTK_DEVICE CCTK_ATTRIBUTE_ALWAYS_INLINE inline void
   solve(const EOSType *eos_3p, prim_vars &pv, prim_vars &pv_seeds,
         cons_vars &cv, const CCTK_REAL alp, const vec<CCTK_REAL, 3> &beta,
-        const smat<CCTK_REAL, 3> &glo, c2p_report &rep) const;
+        const smat<CCTK_REAL, 3> &glo, c2p_report &rep,
+        bool reject_nonpositive_eps = false) const;
 
   /* Destructor */
   CCTK_HOST CCTK_DEVICE ~c2p_2DNoble();
@@ -284,7 +285,7 @@ CCTK_HOST CCTK_DEVICE CCTK_ATTRIBUTE_ALWAYS_INLINE inline void
 c2p_2DNoble::solve(const EOSType *eos_3p, prim_vars &pv, prim_vars &pv_seeds,
                    cons_vars &cv, const CCTK_REAL alp,
                    const vec<CCTK_REAL, 3> &beta, const smat<CCTK_REAL, 3> &glo,
-                   c2p_report &rep) const {
+                   c2p_report &rep, bool reject_nonpositive_eps) const {
 
   // ROOTSTAT status = ROOTSTAT::SUCCESS;
   rep.iters = 0;
@@ -564,9 +565,9 @@ c2p_2DNoble::solve(const EOSType *eos_3p, prim_vars &pv, prim_vars &pv_seeds,
     return;
   }
 
-  // Error out if eps is negative or zero
-  if (pv.eps <= 0.0) {
-    // set status to eps is out of range
+  // Let the usual temperature floor repair non-positive eps unless the caller
+  // has an entropy-based fallback available.
+  if (reject_nonpositive_eps && pv.eps <= 0.0) {
     rep.set_range_eps(pv.eps);
     cv = cv_const;
     return;

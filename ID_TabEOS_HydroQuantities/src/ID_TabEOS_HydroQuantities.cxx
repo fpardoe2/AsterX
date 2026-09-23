@@ -28,10 +28,10 @@ extern "C" void ID_TabEOS_HydroQuantities_initial_Y_e(CCTK_ARGUMENTS) {
   auto eos_3p_tab3d = global_eos_3p_tab3d;
 
   // Open the Y_e file, which should countain Y_e(rho) for the EOS table slice
-  FILE *Y_e_file = fopen(Y_e_filename, "r");
+  FILE *const Y_e_file = fopen(Y_e_filename, "r");
 
   // Check if everything is OK with the file
-  if ((Y_e_file = fopen(Y_e_filename, "r")) == NULL) {
+  if (Y_e_file == NULL) {
     CCTK_VError(__LINE__, __FILE__, CCTK_THORNSTRING,
                 "File \"%s\" does not exist. ABORTING", Y_e_filename);
   } else {
@@ -41,10 +41,9 @@ extern "C" void ID_TabEOS_HydroQuantities_initial_Y_e(CCTK_ARGUMENTS) {
     // Set interpolation stencil size
     const int interp_stencil_size = 5;
 
-    Ye_reader *id_ye_reader =
-        (Ye_reader *)The_Managed_Arena()->alloc(sizeof *id_ye_reader);
-    id_ye_reader->init(nrho, Y_e_file, eos_3p_tab3d->interptable->x[0],
-                       interp_stencil_size); // eg. logrho array
+    Ye_reader id_ye_reader;
+    id_ye_reader.init(nrho, Y_e_file, eos_3p_tab3d->interptable->x[0],
+                      interp_stencil_size); // eg. logrho array
 
     // Close the file
     fclose(Y_e_file);
@@ -63,7 +62,7 @@ extern "C" void ID_TabEOS_HydroQuantities_initial_Y_e(CCTK_ARGUMENTS) {
           if (rho(p.I) > rho_atm * (1 + atmo_tol)) {
             // Interpolate Y_e(rho_i) at gridpoint i
             const CCTK_REAL Y_eL =
-                id_ye_reader->interpolate_1d_quantity_as_function_of_rho(
+                id_ye_reader.interpolate_1d_quantity_as_function_of_rho(
                     interp_stencil_size, nrho, rho(p.I));
             // Finally, set the Y_e gridfunction
             Ye(p.I) = MIN(MAX(Y_eL, eos_3p_tab3d->interptable->xmin<2>()),
@@ -73,7 +72,10 @@ extern "C" void ID_TabEOS_HydroQuantities_initial_Y_e(CCTK_ARGUMENTS) {
           }
         });
 
-    The_Managed_Arena()->free(id_ye_reader);
+    // loop_all_device is asynchronous. Keep the reader's managed arrays alive
+    // until the device has finished using the by-value reader copy.
+    Gpu::synchronize();
+    id_ye_reader.release();
   }
 }
 
