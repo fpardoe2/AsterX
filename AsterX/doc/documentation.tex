@@ -181,9 +181,9 @@ restriction and halo refill follow the shift.
 $B$-shell metric by a factor of about 2360 ($2.1\times10^{-14}$ to
 $9.1\times10^{-18}$) and brings the subcycled interface profile onto the
 non-subcycled one. Three regression tests cover the AMR configurations:
-\texttt{magTOV\_Z4c\_AMR\_SC} and \texttt{magTOV\_Z4c\_AMR\_SC\_norestrict}
-run subcycled with \texttt{gauge\_register = no} and pin the subcycled path
-bit-for-bit against reference data that predate the register;
+\texttt{magTOV\_Z4c\_AMR\_SC} runs subcycled with \texttt{gauge\_register = no}
+and pins the subcycled path bit-for-bit against reference data that predate
+the register;
 \texttt{magTOV\_Z4c\_AMR\_SC\_gauge\_register} runs the same setup as
 \texttt{magTOV\_Z4c\_AMR\_SC} with the register on and CarpetX poisoning at
 its default, against reference data generated with the register on;

@@ -177,8 +177,9 @@ SCHEDULE AsterX_Sync AT post_recover_variables BEFORE ODESolvers_PostStep
 # its ProlongateRestrictedGFs refills the fine Avec ghost halo from the
 # corrected coarse level, so the register issues no Avec transfer of its own.
 # ODESolvers_PostStep in CCTK_POSTRESTRICT runs after those transfers, so this
-# pass's B, con2prim, G, E and output see the corrected coarse edges, and its
-# AsterX_Sync refreshes the same-level ghosts of the corrected Avec for free.
+# pass's B, con2prim and output, and the fluxes, G and E of the next RHS, see
+# the corrected coarse edges, and its AsterX_Sync refreshes the same-level
+# ghosts of the corrected Avec for free.
 # Requires a CarpetX that provides the CarpetX_PreRestrict group; against one
 # that does not, the group is never traversed and the register is inert.
 # The correction runs on every pass, including the first full cascade after a
@@ -290,9 +291,28 @@ SCHEDULE AsterX_ApplyOuterBCOnPrim IN AsterX_Con2PrimGroup AFTER AsterX_Con2Prim
   OPTIONS: global
 } "Apply CarpetX boundary conditions on primitive variables"
 
+if(freeze_evolution) {
+SCHEDULE AsterX_FreezeEvolutionRHS IN ODESolvers_RHS
+{
+  LANG: C
+  WRITES: rhs_vector(interior)
+  WRITES: Avec_x_rhs(interior) Avec_y_rhs(interior) Avec_z_rhs(interior) Psi_rhs(interior)
+  WRITES: IG_rhs(interior)
+} "Set AsterX RHS to zero when freeze_evolution is enabled"
+}
+
 if(!freeze_evolution) {
 
-SCHEDULE GROUP AsterX_FluxGroup IN ODESolvers_PostStep AFTER AsterX_Con2PrimGroup BEFORE TmunuBaseX_SetTmunuVars
+SCHEDULE GROUP AsterX_RHSGroup IN ODESolvers_RHS
+{
+} "Calculate AsterX RHS"
+
+# The fluxes, the E/G/F auxiliary terms and the low-order flag are evaluated
+# at every RHS stage from that stage's state, immediately before the RHS
+# consumes them. Keeping the flux evaluation inside ODESolvers_RHS is what a
+# flux-register (reflux) correction in the driver needs: the flux groups then
+# hold exactly the stage flux that the state update uses.
+SCHEDULE GROUP AsterX_FluxGroup IN AsterX_RHSGroup
 {
 } "Calculate fluxes and auxiliary terms for the RHS"
 
@@ -357,12 +377,19 @@ SCHEDULE AsterX_Fluxes IN AsterX_FluxGroup
   WRITES: a_xface(everywhere) a_yface(everywhere) a_zface(everywhere)
 } "Calculate the hydro fluxes"
 
-if(restrict_fluxes) {
+# Fine-to-coarse restriction of the fluxes and of E/G replaces the coarse
+# values on fine-covered faces and edges by the fine ones before the coarse
+# RHS uses them. It needs every child level at the same time as its parent,
+# which inside ODESolvers_RHS holds only without subcycling: under subcycling
+# the coarse RHS runs with the fine level outside the active window, so nothing
+# is scheduled and conservation across the refinement boundary is left to the
+# driver.
+if(restrict_fluxes && !use_subcycling) {
 SCHEDULE AsterX_RestrictFluxes IN AsterX_FluxGroup AFTER AsterX_Fluxes
 {
   LANG: C
   OPTIONS: global
-} "Restrict the hydro fluxes fine-to-coarse on time-aligned levels"
+} "Restrict the hydro fluxes fine-to-coarse"
 }
 
 SCHEDULE AsterX_CalcAuxTermsForAvecPsiRHS IN AsterX_FluxGroup AFTER AsterX_Fluxes
@@ -383,7 +410,7 @@ SCHEDULE AsterX_CalcAuxTermsForAvecPsiRHS IN AsterX_FluxGroup AFTER AsterX_Fluxe
   WRITES: Fx_stag(everywhere) Fy_stag(everywhere) Fz_stag(everywhere)
 } "Calculate the auxiliary terms for the rhs of Avec and Psi"
 
-if(restrict_fluxes) {
+if(restrict_fluxes && !use_subcycling) {
 SCHEDULE AsterX_RestrictAuxTermsForAvecPsiRHS IN AsterX_FluxGroup AFTER AsterX_CalcAuxTermsForAvecPsiRHS
 {
   LANG: C
@@ -391,25 +418,7 @@ SCHEDULE AsterX_RestrictAuxTermsForAvecPsiRHS IN AsterX_FluxGroup AFTER AsterX_C
 } "Restrict the auxiliary terms for the rhs of Avec and Psi"
 }
 
-} # end of if(!freeze_evolution)
-
-if(freeze_evolution) {
-SCHEDULE AsterX_FreezeEvolutionRHS IN ODESolvers_RHS
-{
-  LANG: C
-  WRITES: rhs_vector(interior)
-  WRITES: Avec_x_rhs(interior) Avec_y_rhs(interior) Avec_z_rhs(interior) Psi_rhs(interior)
-  WRITES: IG_rhs(interior)
-} "Set AsterX RHS to zero when freeze_evolution is enabled"
-}
-
-if(!freeze_evolution) {
-
-SCHEDULE GROUP AsterX_RHSGroup IN ODESolvers_RHS
-{
-} "Calculate AsterX RHS"
-
-SCHEDULE AsterX_SourceTerms IN AsterX_RHSGroup
+SCHEDULE AsterX_SourceTerms IN AsterX_RHSGroup AFTER AsterX_FluxGroup
 {
   LANG: C
   READS: ADMBaseX::metric(everywhere)
