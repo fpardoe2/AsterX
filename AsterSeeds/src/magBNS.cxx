@@ -57,6 +57,10 @@ extern "C" void AsterSeeds_InitializeCenteredAvec_BNS(CCTK_ARGUMENTS) {
   DECLARE_CCTK_ARGUMENTSX_AsterSeeds_InitializeCenteredAvec_BNS;
   DECLARE_CCTK_PARAMETERS;
 
+  if (B0_1 == 0.0 && B0_2 == 0.0 && B0 != 0.0)
+       CCTK_WARN(1, "B0 is set but B0_1/B0_2 are zero: BNS seeding will use zero field. "
+                    "Did you forget to set AsterSeeds::B0_1 / B0_2?");
+
   // Set origin according to parameter or NS CoMs
   CCTK_REAL x01, y01, z01, x02, y02, z02;
   if (seed_every != 0) {
@@ -110,7 +114,7 @@ extern "C" void AsterSeeds_InitializeCenteredAvec_BNS(CCTK_ARGUMENTS) {
     grid.loop_all<1, 1, 1>(
         grid.nghostzones,
         [=] CCTK_HOST(const Loop::PointDesc &p) CCTK_ATTRIBUTE_ALWAYS_INLINE {
-          // For star 1 at minus side
+          // For star 1 
           CCTK_REAL x_local_s1 = p.x - x01;
           CCTK_REAL y_local_s1 = p.y - y01;
           CCTK_REAL z_local_s1 = p.z - z01;
@@ -119,9 +123,9 @@ extern "C" void AsterSeeds_InitializeCenteredAvec_BNS(CCTK_ARGUMENTS) {
                    z_local_s1 * z_local_s1);
 
           CCTK_REAL Aphi_local_s1 =
-              B0 * (pow(r0, 3.0) / (pow(r0, 3.0) + pow(rsph_s1, 3.0)));
+              B0_1 * (pow(r0, 3.0) / (pow(r0, 3.0) + pow(rsph_s1, 3.0)));
 
-          // For star 2 at minus side
+          // For star 2 
           CCTK_REAL x_local_s2 = p.x - x02;
           CCTK_REAL y_local_s2 = p.y - y02;
           CCTK_REAL z_local_s2 = p.z - z02;
@@ -130,7 +134,7 @@ extern "C" void AsterSeeds_InitializeCenteredAvec_BNS(CCTK_ARGUMENTS) {
                    z_local_s2 * z_local_s2);
 
           CCTK_REAL Aphi_local_s2 =
-              B0 * (pow(r0, 3.0) / (pow(r0, 3.0) + pow(rsph_s2, 3.0)));
+              B0_2 * (pow(r0, 3.0) / (pow(r0, 3.0) + pow(rsph_s2, 3.0)));
 
           Avec_x_cent(p.I) =
               -(y_local_s1 * Aphi_local_s1 + y_local_s2 * Aphi_local_s2);
@@ -147,7 +151,7 @@ extern "C" void AsterSeeds_InitializeCenteredAvec_BNS(CCTK_ARGUMENTS) {
         [=] CCTK_HOST(const Loop::PointDesc &p) CCTK_ATTRIBUTE_ALWAYS_INLINE {
           const CCTK_REAL pi = 2 * acos(0.0);
 
-          // For star 1 at minus side
+          // For star 1 
           CCTK_REAL x_local_s1 = p.x - x01;
           CCTK_REAL y_local_s1 = p.y - y01;
           CCTK_REAL z_local_s1 = p.z - z01;
@@ -161,11 +165,11 @@ extern "C" void AsterSeeds_InitializeCenteredAvec_BNS(CCTK_ARGUMENTS) {
           // See e.g. Ruiz+ 2020, Eq. 1. Here, B0 is I0 from Eq. 1, and we have
           // preemptively canceled out the factor of cylrad2.
           CCTK_REAL Aphi_local_s1 =
-              pi * B0 * r02 / pow(r02 + sphrad2_s1, 1.5) *
+              pi * B0_1 * r02 / pow(r02 + sphrad2_s1, 1.5) *
               (1.0 + (15.0 * r02 * (r02 + cylrad2_s1) /
                       (8.0 * pow(r02 + sphrad2_s1, 2.0))));
 
-          // For star 2 at minus side
+          // For star 2 
           CCTK_REAL x_local_s2 = p.x - x02;
           CCTK_REAL y_local_s2 = p.y - y02;
           CCTK_REAL z_local_s2 = p.z - z02;
@@ -176,7 +180,7 @@ extern "C" void AsterSeeds_InitializeCenteredAvec_BNS(CCTK_ARGUMENTS) {
                                  z_local_s2 * z_local_s2;
 
           CCTK_REAL Aphi_local_s2 =
-              pi * B0 * r02 / pow(r02 + sphrad2_s2, 1.5) *
+              pi * B0_2 * r02 / pow(r02 + sphrad2_s2, 1.5) *
               (1.0 + (15.0 * r02 * (r02 + cylrad2_s2) /
                       (8.0 * pow(r02 + sphrad2_s2, 2.0))));
 

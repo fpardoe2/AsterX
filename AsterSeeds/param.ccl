@@ -219,6 +219,16 @@ REAL B0 "Magnetic field strength" STEERABLE=ALWAYS
   *:*     :: "Anything"
 } 0.0
 
+REAL B0_1 "Magnetic field strength of the first star" STEERABLE=ALWAYS
+{
+  *:*     :: "Anything"
+} 0.0
+
+REAL B0_2 "Magnetic field strength of the second star" STEERABLE=ALWAYS
+{
+  *:*     :: "Anything"
+} 0.0
+
 REAL r0 "Characteristic radial offset" STEERABLE=ALWAYS
 {
   *:*     :: "Anything"
